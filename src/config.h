@@ -52,3 +52,13 @@
 #define ZXMENU_CHECK_INTERVAL_MS  (6UL * 60 * 60 * 1000)    // every 6 h
 #define MENU_FS_PATH      "/menu.p"      // mirrored OSOS image (update slot)
 #define PROGRAM_FS_PATH   "/program.p"   // last web-uploaded .p (program slot)
+
+// ---- Phase 3: ZX81 text web browser --------------------------------------
+// The ESP fetches a URL, renders the HTML to ZX81-friendly text (uppercased,
+// 32-col word-wrapped, numbered [N] link markers) and stores it as the browse
+// slot for the ZX81 to pull via I/T/X. State (URL, links, history) lives on the ESP.
+#define BROWSE_FS_PATH    "/browse.txt"
+#define BROWSE_COLS       32             // ZX81 screen width (word wrap)
+#define BROWSE_MAX_BYTES  16384          // cap on rendered page text
+#define BROWSE_MAX_LINKS  120            // numbered links per page
+#define BROWSE_HOME_URL   "http://example.com"   // default entry page (set live in web UI)

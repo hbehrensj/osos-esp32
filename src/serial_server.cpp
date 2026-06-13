@@ -1,6 +1,7 @@
 #include "serial_server.h"
 #include "config.h"
 #include "github_update.h"
+#include "browser.h"
 #include <LittleFS.h>
 
 static HardwareSerial S1(OSOS_UART_NUM);
@@ -69,6 +70,17 @@ static void handleUpdateQuery() {
                 zxVer, menuVer, avail ? "UPDATE" : "uptodate");
 }
 
+// 'B',cmd — browser command (0=reload, 1..N=follow link N, 255=back). Render the page
+// into the browse slot and arm it for the next I/T/X pull. Reply 1 status byte.
+static void handleBrowse() {
+  int cmd = readByteBlocking(2000);
+  if (cmd < 0) { Serial.println("[srv] B: arg timeout"); return; }
+  bool ok = browserGo(cmd);
+  if (ok) servePath = BROWSE_FS_PATH;        // arm browse slot for the next 'I'
+  S1.write((uint8_t)(ok ? 1 : 0));
+  Serial.printf("[srv] B cmd=%d -> %s (%d links)\n", cmd, ok ? "ok" : "fail", browserLinkCount());
+}
+
 void serialServerLoop() {
   while (S1.available()) {
     int b = S1.read();
@@ -76,6 +88,7 @@ void serialServerLoop() {
       case 'I': handleInfo();        break;
       case 'T': handleBlock();       break;
       case 'U': handleUpdateQuery(); break;
+      case 'B': handleBrowse();      break;
       case 'X':
         if (serveFile) serveFile.close();
         servePath = PROGRAM_FS_PATH;             // revert to program slot

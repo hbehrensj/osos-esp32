@@ -2,6 +2,7 @@
 #include "config.h"
 #include "github_update.h"
 #include "selfupdate.h"
+#include "browser.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <LittleFS.h>
@@ -50,6 +51,18 @@ static const char PAGE_HTML[] PROGMEM = R"HTML(<!doctype html>
     <span id="m" style="margin-left:8px;font-size:13px"></span>
     <div class="k" style="margin-top:8px">menu.p is mirrored from GitHub; the ZX81 installs it via <b>U</b> (UPDATE OS).</div>
   </div>
+
+  <h3>ZX81 web browser</h3>
+  <div class="card">
+    <input id="url" placeholder="http://example.com" style="width:68%"
+           onkeydown="if(event.key=='Enter')browse()">
+    <button onclick="browse()">Load</button>
+    <span id="b" style="margin-left:8px;font-size:13px"></span>
+    <div class="k" style="margin-top:8px">Set the entry page here; on the ZX81, follow <b>[N]</b> links by number.</div>
+    <pre id="bt" style="background:#0a0c10;border:1px solid #262b35;border-radius:8px;
+      padding:10px;max-height:300px;overflow:auto;white-space:pre-wrap;
+      font-family:ui-monospace,monospace;font-size:12px;margin-top:8px"></pre>
+  </div>
 </div>
 <script>
 function card(k,v){return '<div class=card><div class=k>'+k+'</div><div class=v>'+v+'</div></div>'}
@@ -82,7 +95,20 @@ async function post(u,msgId){
   catch(e){el.textContent='(rebooting if updating…)';}
   tick();
 }
-setInterval(tick,2000); tick();
+async function browse(){
+  let u=document.getElementById('url').value, el=document.getElementById('b');
+  if(!u){return} el.textContent='loading…';
+  try{
+    let r=await fetch('/api/browse',{method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'url='+encodeURIComponent(u)});
+    el.textContent=await r.text(); loadText();
+  }catch(e){el.textContent='error';}
+}
+async function loadText(){
+  try{document.getElementById('bt').textContent=await (await fetch('/api/browsetext')).text();}catch(e){}
+}
+setInterval(tick,2000); tick(); loadText();
 </script></body></html>)HTML";
 
 static void handleState() {
@@ -115,6 +141,20 @@ static void handleUploadData() {
   }
 }
 
+static void handleBrowseSet() {
+  String url = server.arg("url");
+  if (url.length()) browserSetUrl(url);     // blocks while fetching/rendering
+  server.send(200, "text/plain",
+              String(browserLinkCount()) + " links — " + browserCurrentUrl());
+}
+
+static void handleBrowseText() {
+  File f = LittleFS.open(BROWSE_FS_PATH, "r");
+  if (!f) { server.send(200, "text/plain", "(no page loaded)"); return; }
+  server.streamFile(f, "text/plain");
+  f.close();
+}
+
 static void registerRoutes() {
   server.on("/", HTTP_GET, []() { server.send_P(200, "text/html", PAGE_HTML); });
   server.on("/api/state", HTTP_GET, handleState);
@@ -126,6 +166,8 @@ static void registerRoutes() {
   server.on("/api/fwupdate", HTTP_POST, []() {
     server.send(200, "text/plain", selfUpdateCheckNow());   // reboots on success
   });
+  server.on("/api/browse", HTTP_POST, handleBrowseSet);
+  server.on("/api/browsetext", HTTP_GET, handleBrowseText);
 }
 
 void webUiBegin() {

@@ -4,6 +4,7 @@
 #include "net_config.h"
 #include "serial_server.h"
 #include "github_update.h"
+#include "browser.h"
 #include "web_ui.h"
 #include "ota.h"
 #include "selfupdate.h"
@@ -38,6 +39,7 @@ void setup() {
   LittleFS.begin(true);     // program slot + menu.p mirror live here
   serialServerBegin();      // OpenSpand UART — serves files even while offline
   githubUpdateBegin();      // load the stored menu.p version
+  browserBegin();           // default home URL for the ZX81 text browser
 
   netConfigBegin();         // connect WiFi or run the captive portal
   ledMode = LED_CONNECTED;
