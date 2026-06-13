@@ -32,8 +32,7 @@ chat + HTTP-to-text browsing).
 | Wiring | ESP **TX = GPIO 34** → OpenSpand serial-in, ESP **RX = GPIO 21** ← OpenSpand serial-out, GND ↔ GND |
 | Power | USB-C (permanent) |
 
-> Verify the OpenSpand serial header is **3.3 V TTL** (direct) — if it is 5 V,
-> level-shift the ESP **RX**. Swapping TX/RX is silent (nothing works). Pins are in
+> Swapping TX/RX is silent (nothing works). Pins are in
 > [`src/config.h`](src/config.h).
 
 ## Build & flash

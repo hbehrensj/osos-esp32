@@ -81,6 +81,23 @@ static void handleBrowse() {
   Serial.printf("[srv] B cmd=%d -> %s (%d links)\n", cmd, ok ? "ok" : "fail", browserLinkCount());
 }
 
+// 'G',len,bytes… — set the browser URL typed on the ZX81 (ASCII). Fetch+render it,
+// arm the browse slot, reply 1 status byte.
+static void handleSetUrl() {
+  int len = readByteBlocking(2000);
+  if (len < 0) { Serial.println("[srv] G: len timeout"); return; }
+  String url;
+  for (int i = 0; i < len; i++) {
+    int c = readByteBlocking(2000);
+    if (c < 0) { Serial.println("[srv] G: body timeout"); return; }
+    url += (char)c;
+  }
+  browserSetUrl(url);                          // normalizes scheme, fetches, renders
+  servePath = BROWSE_FS_PATH;                  // arm browse slot for the next 'I'
+  S1.write((uint8_t)1);
+  Serial.printf("[srv] G '%s'\n", url.c_str());
+}
+
 void serialServerLoop() {
   while (S1.available()) {
     int b = S1.read();
@@ -89,6 +106,7 @@ void serialServerLoop() {
       case 'T': handleBlock();       break;
       case 'U': handleUpdateQuery(); break;
       case 'B': handleBrowse();      break;
+      case 'G': handleSetUrl();      break;
       case 'X':
         if (serveFile) serveFile.close();
         servePath = PROGRAM_FS_PATH;             // revert to program slot
