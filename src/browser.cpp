@@ -187,7 +187,13 @@ static bool fetchAndRender(const String& url) {
   return true;
 }
 
-void browserSetUrl(const String& url) { history.clear(); fetchAndRender(url); }
+static String normalizeUrl(String u) {
+  u.trim();
+  if (!u.startsWith("http://") && !u.startsWith("https://")) u = "http://" + u;
+  return u;
+}
+
+void browserSetUrl(const String& url) { history.clear(); fetchAndRender(normalizeUrl(url)); }
 
 bool browserGo(int cmd) {
   if (cmd == 0)   return fetchAndRender(currentUrl.length() ? currentUrl : String(BROWSE_HOME_URL));
