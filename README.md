@@ -56,6 +56,11 @@ your WiFi; otherwise the captive portal handles it.
 - **`net_config`** — WiFiManager portal + reconnect watchdog + mDNS (`osos.local`).
 - **`ota` / `selfupdate`** — this firmware's own OTA and GitHub self-update.
 
+## See also
+
+The ZX81 side — the launcher, the `S`/`U` keys, and the `RXSER`/`UPDQRY` machine code that
+drive this bridge — lives in **[OpenSpand-OS](https://github.com/hbehrensj/OpenSpand-OS)**.
+
 ## License
 
 GPLv3 — same as OSOS and the OpenSpand firmware.
