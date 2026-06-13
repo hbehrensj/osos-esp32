@@ -14,25 +14,37 @@ String browserCurrentUrl() { return currentUrl; }
 int    browserLinkCount()  { return links.size(); }
 void   browserBegin()      { currentUrl = BROWSE_HOME_URL; }
 
-// ---- HTTP fetch (http or https), capped --------------------------------------
-static bool fetchUrl(const String& url, String& body) {
-  body = "";
-  if (WiFi.status() != WL_CONNECTED) return false;
+static String resolveUrl(const String& base, String href);   // fwd (for redirects)
+
+// One HTTP(S) request. On success fills `body`. On a redirect, fills `location`
+// (left for the caller to follow with the right client). Manual redirect handling
+// is required because HTTPClient can't upgrade a plain WiFiClient to TLS for an
+// http -> https redirect (very common, e.g. .dk sites forcing HTTPS).
+static bool fetchOnce(const String& url, String& body, String& location) {
+  body = ""; location = "";
   bool https = url.startsWith("https");
   WiFiClientSecure sclient;
   WiFiClient       cclient;
   if (https) sclient.setInsecure();
   HTTPClient http;
-  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+  http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
   http.setConnectTimeout(8000);
   http.useHTTP10(true);
   bool ok = https ? http.begin(sclient, url) : http.begin(cclient, url);
   if (!ok) return false;
   http.setUserAgent("OSOS-ZX81/1.0");
+  const char* collect[] = { "Location" };
+  http.collectHeaders(collect, 1);
   int code = http.GET();
+
+  if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+    location = http.header("Location");
+    http.end();
+    return location.length() > 0;
+  }
   if (code != HTTP_CODE_OK) { http.end(); return false; }
 
-  const size_t CAP = 40 * 1024;
+  const size_t CAP = 64 * 1024;   // many sites have a large <head>; read enough to reach <body>
   body.reserve(8192);
   WiFiClient* stream = http.getStreamPtr();
   uint8_t buf[512];
@@ -52,6 +64,19 @@ static bool fetchUrl(const String& url, String& body) {
   }
   http.end();
   return body.length() > 0;
+}
+
+// Fetch with manual redirect following (up to 6 hops, switching http<->https).
+static bool fetchUrl(const String& startUrl, String& body) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  String url = startUrl;
+  for (int hop = 0; hop < 6; hop++) {
+    String location;
+    if (!fetchOnce(url, body, location)) return false;
+    if (location.length()) { url = resolveUrl(url, location); continue; }
+    return body.length() > 0;
+  }
+  return false;
 }
 
 // ---- helpers -----------------------------------------------------------------
@@ -118,7 +143,11 @@ static void wrapTo(File& f, const String& rough) {
   while (i < n && written < BROWSE_MAX_BYTES) {
     while (i < n && rough[i] == ' ') i++;                 // collapse spaces
     if (i >= n) break;
-    if (rough[i] == '\n') { f.write('\n'); written++; col = 0; while (i < n && rough[i] == '\n') i++; continue; }
+    if (rough[i] == '\n') {                              // collapse blank lines (ws+newlines)
+      f.write('\n'); written++; col = 0;
+      while (i < n && (rough[i] == '\n' || rough[i] == ' ')) i++;
+      continue;
+    }
     int s = i; while (i < n && rough[i] != ' ' && rough[i] != '\n') i++;
     int len = i - s;
     if (col > 0 && col + 1 + len > BROWSE_COLS) { f.write('\n'); written++; col = 0; }
