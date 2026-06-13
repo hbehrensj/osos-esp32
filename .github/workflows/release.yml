@@ -1,0 +1,43 @@
+name: release
+# Tag a version (e.g. v0.2.0) -> build the firmware with that version baked in and
+# publish firmware.bin + version.json as the GitHub Release assets that the device's
+# self-update (UPDATE_VERSION_URL / UPDATE_FIRMWARE_URL) pulls from.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Derive version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build firmware
+        run: pio run -e lolin_s2_mini
+        env:
+          PLATFORMIO_BUILD_FLAGS: -D FIRMWARE_VERSION=${{ steps.ver.outputs.version }}
+
+      - name: Stage assets
+        run: |
+          cp .pio/build/lolin_s2_mini/firmware.bin firmware.bin
+          printf '{"version":"%s"}\n' "${{ steps.ver.outputs.version }}" > version.json
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            firmware.bin
+            version.json
