@@ -4,6 +4,7 @@
 #include "selfupdate.h"
 #include "browser.h"
 #include "serial_server.h"
+#include "library.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <LittleFS.h>
@@ -64,6 +65,25 @@ static const char PAGE_HTML[] PROGMEM = R"HTML(<!doctype html>
       padding:10px;max-height:300px;overflow:auto;white-space:pre-wrap;
       font-family:ui-monospace,monospace;font-size:12px;margin-top:8px"></pre>
   </div>
+
+  <h3>Program library (ZX81 TOSEC)</h3>
+  <div class="card">
+    <button onclick="libload()">Load catalog</button>
+    <span id="lst" style="margin-left:8px;font-size:13px"></span>
+    <div style="margin-top:8px">
+      <select id="lcat">
+        <option value="-1">All</option><option value="0">Games</option>
+        <option value="1">Apps</option><option value="2">Demos</option>
+        <option value="3">Educational</option><option value="4">Games (multi)</option>
+        <option value="5">Apps (multi)</option>
+      </select>
+      <input id="lq" placeholder="search title…" style="width:45%"
+             oninput="lsearch()" onchange="lsearch()">
+    </div>
+    <pre id="lres" style="background:#0a0c10;border:1px solid #262b35;border-radius:8px;
+      padding:10px;max-height:300px;overflow:auto;white-space:pre-wrap;
+      font-family:ui-monospace,monospace;font-size:12px;margin-top:8px"></pre>
+  </div>
 </div>
 <script>
 function card(k,v){return '<div class=card><div class=k>'+k+'</div><div class=v>'+v+'</div></div>'}
@@ -108,6 +128,20 @@ async function browse(){
 }
 async function loadText(){
   try{document.getElementById('bt').textContent=await (await fetch('/api/browsetext')).text();}catch(e){}
+}
+async function libload(){
+  let el=document.getElementById('lst'); el.textContent='loading…';
+  try{let r=await fetch('/api/libload',{method:'POST'}); el.textContent=await r.text(); lsearch();}
+  catch(e){el.textContent='error';}
+}
+async function lsearch(){
+  let cat=document.getElementById('lcat').value, q=document.getElementById('lq').value;
+  try{
+    let r=await fetch('/api/libsearch?cat='+cat+'&q='+encodeURIComponent(q));
+    let d=await r.json(), el=document.getElementById('lres');
+    el.textContent=(d.total||0)+' matches'+(d.total>d.items.length?' (showing '+d.items.length+')':'')+'\n'+
+      d.items.map(x=>'#'+x.i+'  '+x.title).join('\n');
+  }catch(e){document.getElementById('lres').textContent='(load the catalog first)';}
 }
 setInterval(tick,2000); tick(); loadText();
 </script></body></html>)HTML";
@@ -158,6 +192,27 @@ static void handleBrowseText() {
   f.close();
 }
 
+static void handleLibSearch() {
+  int cat = server.hasArg("cat") ? server.arg("cat").toInt() : -1;
+  int off = server.hasArg("off") ? server.arg("off").toInt() : 0;
+  String out;
+  int total = librarySearch(cat, server.arg("q"), off, 25, out);
+  JsonDocument d;
+  d["total"] = total;
+  JsonArray items = d["items"].to<JsonArray>();
+  int s = 0;
+  while (s < (int)out.length()) {
+    int nl = out.indexOf('\n', s); if (nl < 0) break;
+    String line = out.substring(s, nl); s = nl + 1;
+    int t = line.indexOf('\t'); if (t < 0) continue;
+    JsonObject o = items.add<JsonObject>();
+    o["i"] = line.substring(0, t).toInt();
+    o["title"] = line.substring(t + 1);
+  }
+  String j; serializeJson(d, j);
+  server.send(200, "application/json", j);
+}
+
 static void registerRoutes() {
   server.on("/", HTTP_GET, []() { server.send_P(200, "text/html", PAGE_HTML); });
   server.on("/api/state", HTTP_GET, handleState);
@@ -171,6 +226,8 @@ static void registerRoutes() {
   });
   server.on("/api/browse", HTTP_POST, handleBrowseSet);
   server.on("/api/browsetext", HTTP_GET, handleBrowseText);
+  server.on("/api/libload", HTTP_POST, []() { server.send(200, "text/plain", libraryEnsureCatalog()); });
+  server.on("/api/libsearch", HTTP_GET, handleLibSearch);
 }
 
 void webUiBegin() {
