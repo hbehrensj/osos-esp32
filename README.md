@@ -5,9 +5,7 @@ gives a **Sinclair ZX81** running [OSOS](https://github.com/hbehrensj/OpenSpand-
 WiFi. It is a multi-service server the ZX81 talks to over UART; the ZX81 always
 initiates (matching its `zxsvr` pull / `FAST`-mode receive).
 
-Built on the same foundation as
-[TDAI-2170_EPS32_Interface](https://github.com/hbehrensj/TDAI-2170_EPS32_Interface):
-WiFiManager captive-portal config, a browser UI, espota + GitHub self-update.
+It provides WiFiManager captive-portal config, a browser UI, and espota + GitHub self-update.
 
 ## Features
 
@@ -19,6 +17,9 @@ WiFiManager captive-portal config, a browser UI, espota + GitHub self-update.
 - 🌐 **Web browser** — fetches a URL and stream-renders the HTML to ZX81 text with numbered
   links; press **B** on the ZX81 to browse (follow links by number, or type a URL). Handles
   heavy modern sites (a streaming parser skips huge `<head>`/`<script>` sections).
+- 📚 **Online program library** — search the ZX81 TOSEC archive and download games straight
+  to the SD card; press **L** on the ZX81 (or use the web UI). The bridge fetches each game's
+  zip from archive.org, inflates the `.p`, gives it an 8.3 name, and arms it for the next pull.
 - 🔄 **ESP self-update + OTA** — this firmware updates itself from its own GitHub releases,
   and is flashable over WiFi.
 
@@ -30,11 +31,20 @@ Roadmap: NTP→RTC clock sync, and an Anthropic-API chat terminal for the ZX81.
 | --------- | ------ |
 | Microcontroller | ESP32-S2 Mini (Lolin/WeMos) |
 | Link | TTL UART to the OpenSpand serial header, 38400 8N1 |
-| Wiring | ESP **TX = GPIO 34** → OpenSpand serial-in, ESP **RX = GPIO 21** ← OpenSpand serial-out, GND ↔ GND |
-| Power | USB-C (permanent) |
+| Enclosure | 3D-printed case — [`3D print case/osos Wifi.stl`](3D%20print%20case/) |
 
-> Swapping TX/RX is silent (nothing works). Pins are in
-> [`src/config.h`](src/config.h).
+The board connects to the OpenSpand with **4 wires** (no separate USB needed — it is powered
+from the OpenSpand's 5 V rail into the S2's `VBUS`):
+
+| OpenSpand | ESP32-S2 | Purpose |
+| --------- | -------- | ------- |
+| GND | GND | common ground |
+| serial-out | **RX = GPIO 21** | ZX81 → ESP |
+| serial-in | **TX = GPIO 34** | ESP → ZX81 |
+| 5 V — **pin 6 of the I²C header** | **VBUS** | power |
+
+> Swapping TX/RX is silent (nothing works). The 5 V → `VBUS` line powers the board, so you
+> can leave USB-C unplugged in normal use. Pins are in [`src/config.h`](src/config.h).
 
 ## Flashing a new device
 
@@ -49,7 +59,7 @@ esptool.py --chip esp32s2 write_flash 0x0 osos-esp32-factory.bin
 …or flash it from the browser with [esptool-js](https://espressif.github.io/esptool-js/) (no
 install). On first boot it starts the **`OSOS-Setup`** WiFi captive portal — join it and enter
 your network; afterwards the bridge is reachable at **http://osos.local/**. Wire it to the
-OpenSpand serial header (see Hardware) and you're ready to press `S`/`U`/`B` on the ZX81.
+OpenSpand serial header (see Hardware) and you're ready to press `S`/`U`/`B`/`L` on the ZX81.
 
 ## Build from source
 

@@ -26,6 +26,8 @@ round-trip is the pacing).
 | `'N'` (0x4E) | — | `len`, then `len` bytes | The program slot's filename as **ZX81 char codes**. Sent before a program transfer so the ZX81 can save under the real name; `zxsvr.exe` ignores `'N'` (the ZX81 times out → `INBOX.P`). |
 | `'B'` (0x42) | `cmd` | `status` (1 byte) | Browser command: `0`=reload, `1..N`=follow link N, `255`=back. Renders the page into the browse slot and arms it for the next `I`/`T`/`X`. |
 | `'G'` (0x47) | `len`, then `len` bytes | `status` (1 byte) | Set the browser URL (ASCII, typed on the ZX81). The ESP fetches+renders and arms the browse slot. |
+| `'L'` (0x4C) | `cat, len`, then `len` query bytes | `count` (1 byte) | Library search. `cat` 255 = all categories. The ESP searches the TOSEC catalog (auto-downloading it on first use), renders the matches as a **numbered list** into the browse slot (arming it for the next `I`/`T`/`X`), and remembers the page's catalog indices. Replies the number of results. |
+| `'D'` (0x44) | `num` | `status` (1 byte) | Download the `num`-th result of the last `'L'` search: fetch its zip from archive.org, inflate the `.p`, write it to the **program slot** with an 8.3 name, and arm it. Replies `1` on success. Takes a few seconds. |
 
 ## Slots
 
@@ -36,8 +38,9 @@ The ESP serves one of three files in LittleFS for the `I`/`T`/`X` pull:
   persisted in `/program.nam`), falling back to `INBOX.P`.
 - **update slot** (`/menu.p`) — the latest OSOS image mirrored from the OpenSpand-OS GitHub
   releases. Armed by `'U'`; the ZX81's `U` key pulls it, saves it as `MENU.P`, and `LOAD`s it.
-- **browse slot** (`/browse.txt`) — the rendered web page. Armed by `'B'`/`'G'`; the ZX81's
-  `B` (browse) mode pulls and displays it.
+- **browse slot** (`/browse.txt`) — the rendered web page **or** the library's numbered
+  search results. Armed by `'B'`/`'G'` (browser) and `'L'` (library); the ZX81's `B` and `L`
+  modes pull and display it. A `'D'` download arms the **program slot** with the game.
 
 After each `'X'` the ESP reverts to the program slot. A bare `zxsvr.exe` / `zxserver.sh` that
 only sends `I`/`T`/`X` transfers the program slot unchanged — useful for bench transfers.
@@ -45,5 +48,7 @@ only sends `I`/`T`/`X` transfers the program slot unchanged — useful for bench
 ## ZX81 side
 
 Implemented in [`OpenSpand-OS`](https://github.com/hbehrensj/OpenSpand-OS) `build_menu.py`:
-`RXSER` (the `I`/`T`/`X` pull in `FAST` mode), `UPDQRY`/`NAMEGET` (`'U'`/`'N'` queries), and
-`BROWSEGO`/`URLSEND` + the `BRENDER`/`KSCAN` browser machine code (`'B'`/`'G'`).
+`RXSER` (the `I`/`T`/`X` pull in `FAST` mode), `UPDQRY`/`NAMEGET` (`'U'`/`'N'` queries),
+`BROWSEGO`/`URLSEND` + the `BRENDER`/`KSCAN` browser machine code (`'B'`/`'G'`), and
+`LIBSEND`/`LIBGET` for the library (`'L'`/`'D'`) — which reuse the browser's editor and
+display loop on the ZX81.
