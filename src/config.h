@@ -31,7 +31,8 @@
 // ---- ESP firmware version + self-update from THIS repo's releases --------
 // Release CI injects the tag with  -D FIRMWARE_VERSION=0.2.0  (no quotes).
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION_STR "0.1.0"
+#define FIRMWARE_VERSION_STR "9.9.9"   // dev sentinel: higher than any release, so a local
+                                       // dev OTA is never clobbered by GitHub self-update
 #else
 #define FW_STR2(x) #x
 #define FW_STR(x)  FW_STR2(x)
