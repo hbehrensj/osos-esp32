@@ -156,7 +156,9 @@ static void handleLibGet() {
   int num = readByteBlocking(3000);
   if (num < 0) return;
   String r = libraryDownloadByPage(num);
-  S1.write((uint8_t)(r.indexOf("ready") >= 0 ? 1 : 0));
+  bool ok = r.indexOf("ready") >= 0;
+  if (ok) servePath = PROGRAM_FS_PATH;       // arm the freshly downloaded game for I/T/X
+  S1.write((uint8_t)(ok ? 1 : 0));
   Serial.printf("[srv] D %d -> %s\n", num, r.c_str());
 }
 
