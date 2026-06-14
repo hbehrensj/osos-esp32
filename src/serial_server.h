@@ -19,3 +19,4 @@
 void serialServerBegin();
 void serialServerLoop();
 void serialSetProgramName(const String& fn);   // remember a web-uploaded .p's filename
+String serialProgramName();                     // current program-slot filename

@@ -124,6 +124,7 @@ static void handleState() {
     if (f) { psz = f.size(); f.close(); }
   }
   d["program_size"] = psz;
+  d["program_name"] = serialProgramName();
   d["menu_version"] = githubUpdateMenuVersion();
   String out; serializeJson(d, out);
   server.send(200, "application/json", out);

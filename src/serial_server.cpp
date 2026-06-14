@@ -9,12 +9,18 @@ static File   serveFile;                       // open across an I..T..X session
 static String servePath = PROGRAM_FS_PATH;     // armed slot (reverts on 'X')
 static String programName = "INBOX.P";         // original name of the web-uploaded .p
 
+#define PROGRAM_NAME_PATH "/program.nam"
+
 void serialSetProgramName(const String& fn) {
   int s = fn.lastIndexOf('/'); if (s < 0) s = fn.lastIndexOf('\\');
   String n = (s >= 0) ? fn.substring(s + 1) : fn;
   n.trim();
   programName = n.length() ? n : String("INBOX.P");
+  File f = LittleFS.open(PROGRAM_NAME_PATH, "w");   // persist across reboots (like the .p)
+  if (f) { f.print(programName); f.close(); }
 }
+
+String serialProgramName() { return programName; }
 
 // ASCII -> ZX81 character code, or -1 to skip (for filename chars).
 static int asciiToZx(char c) {
@@ -29,8 +35,10 @@ static int asciiToZx(char c) {
 
 void serialServerBegin() {
   S1.begin(OSOS_BAUD, SERIAL_8N1, OSOS_RX_PIN, OSOS_TX_PIN);
-  Serial.printf("[srv] UART%d @ %d 8N1 (RX=%d TX=%d)\n",
-                OSOS_UART_NUM, OSOS_BAUD, OSOS_RX_PIN, OSOS_TX_PIN);
+  File f = LittleFS.open(PROGRAM_NAME_PATH, "r");   // restore last upload's name
+  if (f) { String n = f.readString(); n.trim(); if (n.length()) programName = n; f.close(); }
+  Serial.printf("[srv] UART%d @ %d 8N1 (RX=%d TX=%d), program '%s'\n",
+                OSOS_UART_NUM, OSOS_BAUD, OSOS_RX_PIN, OSOS_TX_PIN, programName.c_str());
 }
 
 // The ZX81 sends a verb's argument bytes right behind the verb; wait briefly.
