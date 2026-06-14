@@ -1,7 +1,8 @@
 name: release
-# Tag a version (e.g. v0.2.0) -> build the firmware with that version baked in and
-# publish firmware.bin + version.json as the GitHub Release assets that the device's
-# self-update (UPDATE_VERSION_URL / UPDATE_FIRMWARE_URL) pulls from.
+# Tag a version (e.g. v0.2.0) -> build the firmware with that version baked in and publish:
+#   firmware.bin           - the app image (device self-update / OTA / pio)
+#   osos-esp32-factory.bin - bootloader+partitions+app merged, for flashing a blank ESP
+#   version.json           - manifest the device self-update reads
 on:
   push:
     tags: ['v*']
@@ -18,8 +19,8 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install PlatformIO
-        run: pip install platformio
+      - name: Install PlatformIO + esptool
+        run: pip install platformio esptool
 
       - name: Derive version from tag
         id: ver
@@ -30,14 +31,23 @@ jobs:
         env:
           PLATFORMIO_BUILD_FLAGS: -D FIRMWARE_VERSION=${{ steps.ver.outputs.version }}
 
-      - name: Stage assets
+      - name: Stage assets (app + factory + manifest)
         run: |
-          cp .pio/build/lolin_s2_mini/firmware.bin firmware.bin
+          BD=.pio/build/lolin_s2_mini
+          cp "$BD/firmware.bin" firmware.bin
           printf '{"version":"%s"}\n' "${{ steps.ver.outputs.version }}" > version.json
+          BOOT_APP0=$(find "$HOME/.platformio/packages" -name boot_app0.bin | head -1)
+          python -m esptool --chip esp32s2 merge_bin -o osos-esp32-factory.bin \
+            --flash_mode dio --flash_size 4MB \
+            0x1000  "$BD/bootloader.bin" \
+            0x8000  "$BD/partitions.bin" \
+            0xe000  "$BOOT_APP0" \
+            0x10000 "$BD/firmware.bin"
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             firmware.bin
+            osos-esp32-factory.bin
             version.json
