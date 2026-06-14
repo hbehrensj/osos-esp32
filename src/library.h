@@ -16,3 +16,7 @@ String libraryStatus();
 // Search the catalog: cat (-1 = all) + case-insensitive substring of the title. Appends up
 // to `count` matches from `offset` as "<lineIndex>\t<TITLE>\n"; returns total match count.
 int    librarySearch(int cat, const String& query, int offset, int count, String& out);
+
+// Download catalog entry `index` from archive.org, inflate its .P, write it to the program
+// slot, and set the 8.3 filename. Returns a status line. (Press S on the ZX81 to pull it.)
+String libraryDownload(int index);

@@ -139,9 +139,18 @@ async function lsearch(){
   try{
     let r=await fetch('/api/libsearch?cat='+cat+'&q='+encodeURIComponent(q));
     let d=await r.json(), el=document.getElementById('lres');
-    el.textContent=(d.total||0)+' matches'+(d.total>d.items.length?' (showing '+d.items.length+')':'')+'\n'+
-      d.items.map(x=>'#'+x.i+'  '+x.title).join('\n');
+    el.innerHTML=(d.total||0)+' matches'+(d.total>d.items.length?' (first '+d.items.length+', refine search)':'')+
+      ' — click to download:<br>'+
+      d.items.map(x=>'<a href="#" onclick="libget('+x.i+');return false">'+x.title+'</a>').join('<br>');
   }catch(e){document.getElementById('lres').textContent='(load the catalog first)';}
+}
+async function libget(i){
+  let el=document.getElementById('lres'); el.textContent='downloading + unzipping…';
+  try{
+    let r=await fetch('/api/libget',{method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'i='+i});
+    el.textContent=await r.text(); tick();
+  }catch(e){el.textContent='error';}
 }
 setInterval(tick,2000); tick(); loadText();
 </script></body></html>)HTML";
@@ -228,6 +237,9 @@ static void registerRoutes() {
   server.on("/api/browsetext", HTTP_GET, handleBrowseText);
   server.on("/api/libload", HTTP_POST, []() { server.send(200, "text/plain", libraryEnsureCatalog()); });
   server.on("/api/libsearch", HTTP_GET, handleLibSearch);
+  server.on("/api/libget", HTTP_POST, []() {       // download+inflate -> program slot
+    server.send(200, "text/plain", libraryDownload(server.arg("i").toInt()));
+  });
 }
 
 void webUiBegin() {
