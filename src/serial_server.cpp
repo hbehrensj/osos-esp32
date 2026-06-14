@@ -7,6 +7,25 @@
 static HardwareSerial S1(OSOS_UART_NUM);
 static File   serveFile;                       // open across an I..T..X session
 static String servePath = PROGRAM_FS_PATH;     // armed slot (reverts on 'X')
+static String programName = "INBOX.P";         // original name of the web-uploaded .p
+
+void serialSetProgramName(const String& fn) {
+  int s = fn.lastIndexOf('/'); if (s < 0) s = fn.lastIndexOf('\\');
+  String n = (s >= 0) ? fn.substring(s + 1) : fn;
+  n.trim();
+  programName = n.length() ? n : String("INBOX.P");
+}
+
+// ASCII -> ZX81 character code, or -1 to skip (for filename chars).
+static int asciiToZx(char c) {
+  if (c >= 'a' && c <= 'z') c -= 32;
+  if (c >= 'A' && c <= 'Z') return 38 + (c - 'A');
+  if (c >= '0' && c <= '9') return 28 + (c - '0');
+  if (c == '.') return 27;
+  if (c == '/') return 24;
+  if (c == '-') return 22;
+  return -1;
+}
 
 void serialServerBegin() {
   S1.begin(OSOS_BAUD, SERIAL_8N1, OSOS_RX_PIN, OSOS_TX_PIN);
@@ -98,6 +117,18 @@ static void handleSetUrl() {
   Serial.printf("[srv] G '%s'\n", url.c_str());
 }
 
+// 'N' — reply with the program slot's filename as ZX81 char codes (len byte + bytes).
+static void handleName() {
+  uint8_t out[32]; int n = 0;
+  for (size_t i = 0; i < programName.length() && n < 31; i++) {
+    int z = asciiToZx(programName[i]);
+    if (z >= 0) out[n++] = (uint8_t)z;
+  }
+  S1.write((uint8_t)n);
+  if (n) S1.write(out, n);
+  Serial.printf("[srv] N -> '%s' (%d codes)\n", programName.c_str(), n);
+}
+
 void serialServerLoop() {
   while (S1.available()) {
     int b = S1.read();
@@ -107,6 +138,7 @@ void serialServerLoop() {
       case 'U': handleUpdateQuery(); break;
       case 'B': handleBrowse();      break;
       case 'G': handleSetUrl();      break;
+      case 'N': handleName();        break;
       case 'X':
         if (serveFile) serveFile.close();
         servePath = PROGRAM_FS_PATH;             // revert to program slot

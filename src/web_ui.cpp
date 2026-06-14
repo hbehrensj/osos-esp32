@@ -3,6 +3,7 @@
 #include "github_update.h"
 #include "selfupdate.h"
 #include "browser.h"
+#include "serial_server.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <LittleFS.h>
@@ -132,6 +133,7 @@ static void handleUploadData() {
   HTTPUpload& up = server.upload();
   if (up.status == UPLOAD_FILE_START) {
     uploadFile = LittleFS.open(PROGRAM_FS_PATH, "w");
+    serialSetProgramName(up.filename);          // remember name for the 'N' verb
     Serial.printf("[web] upload start: %s\n", up.filename.c_str());
   } else if (up.status == UPLOAD_FILE_WRITE) {
     if (uploadFile) uploadFile.write(up.buf, up.currentSize);
