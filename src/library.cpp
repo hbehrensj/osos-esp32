@@ -159,6 +159,35 @@ static bool zipFindMainP(const uint8_t* z, size_t zl, const uint8_t*& data,
 }
 
 #define GAMEZIP_PATH "/game.zip"
+#define LIB_PAGE 18
+static int libPage[LIB_PAGE];
+static int libPageCount = 0;
+
+int libraryRenderSearch(int cat, const String& query) {
+  libraryEnsureCatalog();                       // auto-download the catalog on first use
+  String out;
+  int total = librarySearch(cat, query, 0, LIB_PAGE, out);
+  libPageCount = 0;
+  File f = LittleFS.open(BROWSE_FS_PATH, "w");
+  if (!f) return 0;
+  int s = 0;
+  while (s < (int)out.length() && libPageCount < LIB_PAGE) {
+    int nl = out.indexOf('\n', s); if (nl < 0) break;
+    String line = out.substring(s, nl); s = nl + 1;
+    int t = line.indexOf('\t'); if (t < 0) continue;
+    libPage[libPageCount++] = line.substring(0, t).toInt();
+    f.print(libPageCount); f.print(' '); f.println(line.substring(t + 1));
+  }
+  if (libPageCount == 0) f.print("NO MATCHES");
+  f.close();
+  Serial.printf("[lib] search '%s' -> %d shown, %d total\n", query.c_str(), libPageCount, total);
+  return libPageCount;
+}
+
+String libraryDownloadByPage(int num) {
+  if (num < 1 || num > libPageCount) return "bad number";
+  return libraryDownload(libPage[num - 1]);
+}
 
 String libraryDownload(int index) {
   String title, path;

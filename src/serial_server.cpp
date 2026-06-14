@@ -2,6 +2,7 @@
 #include "config.h"
 #include "github_update.h"
 #include "browser.h"
+#include "library.h"
 #include <LittleFS.h>
 
 static HardwareSerial S1(OSOS_UART_NUM);
@@ -137,6 +138,28 @@ static void handleName() {
   Serial.printf("[srv] N -> '%s' (%d codes)\n", programName.c_str(), n);
 }
 
+// 'L',cat,len,bytes — library search. Render the results as a numbered list into the
+// browse slot (for the ZX81 to pull + show), reply the count (1 byte). cat 255 = all.
+static void handleLibList() {
+  int cat = readByteBlocking(2000);
+  int len = readByteBlocking(2000);
+  if (cat < 0 || len < 0) return;
+  String q;
+  for (int i = 0; i < len; i++) { int c = readByteBlocking(2000); if (c < 0) return; q += (char)c; }
+  int n = libraryRenderSearch(cat == 255 ? -1 : cat, q);
+  servePath = BROWSE_FS_PATH;
+  S1.write((uint8_t)(n > 255 ? 255 : n));
+}
+
+// 'D',num — download the Nth shown result into the program slot; reply 1 status byte.
+static void handleLibGet() {
+  int num = readByteBlocking(3000);
+  if (num < 0) return;
+  String r = libraryDownloadByPage(num);
+  S1.write((uint8_t)(r.indexOf("ready") >= 0 ? 1 : 0));
+  Serial.printf("[srv] D %d -> %s\n", num, r.c_str());
+}
+
 void serialServerLoop() {
   while (S1.available()) {
     int b = S1.read();
@@ -147,6 +170,8 @@ void serialServerLoop() {
       case 'B': handleBrowse();      break;
       case 'G': handleSetUrl();      break;
       case 'N': handleName();        break;
+      case 'L': handleLibList();     break;
+      case 'D': handleLibGet();      break;
       case 'X':
         if (serveFile) serveFile.close();
         servePath = PROGRAM_FS_PATH;             // revert to program slot

@@ -20,3 +20,8 @@ int    librarySearch(int cat, const String& query, int offset, int count, String
 // Download catalog entry `index` from archive.org, inflate its .P, write it to the program
 // slot, and set the 8.3 filename. Returns a status line. (Press S on the ZX81 to pull it.)
 String libraryDownload(int index);
+
+// ZX81 library mode: render search results as a numbered list into the browse slot (for the
+// ZX81 to pull + display), remembering the page's catalog indices; then download the Nth.
+int    libraryRenderSearch(int cat, const String& query);   // returns the number of results
+String libraryDownloadByPage(int num);                      // download the Nth shown result
