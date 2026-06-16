@@ -183,6 +183,7 @@ static void handleUploadData() {
     if (uploadFile) uploadFile.write(up.buf, up.currentSize);
   } else if (up.status == UPLOAD_FILE_END) {
     if (uploadFile) uploadFile.close();
+    serialReopen();   // re-arm: re-open the freshly-uploaded program slot + recache its length
     Serial.printf("[web] upload done: %u bytes\n", (unsigned)up.totalSize);
   }
 }

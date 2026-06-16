@@ -19,7 +19,7 @@ round-trip is the pacing).
 
 | Verb | Args (ZX81 → ESP) | Reply (ESP → ZX81) | Meaning |
 | ---- | ----------------- | ------------------ | ------- |
-| `'I'` (0x49) | — | `len_lo, len_hi` | Length of the armed file (2 bytes, little-endian). |
+| `'I'` (0x49) | — | `len_lo, len_lo, len_lo, len_hi, len_hi, len_hi` | Length of the armed file, **3× redundant** (see *Length de-glitch* below). For a `.p` slot the length is the **true program size from the `E_LINE` system variable** (offset 11–12, `E_LINE − 0x4009`), so trailing padding past the program (common in TOSEC dumps) is trimmed and the load can't run past `RAMTOP`. |
 | `'T'` (0x54) | `blockNum, blockLen` | `blockLen data bytes`, then `sum_lo, sum_hi` | One block from offset `blockNum*256`. `blockLen` 0 means 256. Checksum = 16-bit sum of the block's bytes. |
 | `'X'` (0x58) | — | — | End of transfer; the ESP reverts to the program slot. |
 | `'U'` (0x55) | `verLo, verHi` | `status` (1 byte) | OSOS auto-update query. The ZX81 sends its running version; the ESP replies `1` if a newer `menu.p` is mirrored (and **arms the update slot** for the next `I`/`T`/`X`), else `0`. |
@@ -44,6 +44,18 @@ The ESP serves one of three files in LittleFS for the `I`/`T`/`X` pull:
 
 After each `'X'` the ESP reverts to the program slot. A bare `zxsvr.exe` / `zxserver.sh` that
 only sends `I`/`T`/`X` transfers the program slot unchanged — useful for bench transfers.
+
+## Length de-glitch (`'I'`)
+
+On the OpenSpand serial path, exactly **one byte of a verb's reply gets corrupted** on the ZX81
+side (a hardware/timing quirk — always a single byte, never the last; the back-to-back `'T'`
+data stream is unaffected). The length is only two bytes, so a glitch there is fatal: 16250
+would be read as e.g. 16374, overrunning `RAMTOP` and crashing the game.
+
+So `'I'` replies with the length **3× — `lo, lo, lo, hi, hi, hi`** — and the ZX81 takes the
+**majority** of each triple. One glitched copy can never out-vote the two good ones, wherever it
+lands. The ESP also pre-opens the armed slot so `'I'` answers without a file-open stall. A bare
+`zxsvr.exe` would need the same 3×-length change (the bundled `zxserver.sh` already does it).
 
 ## ZX81 side
 

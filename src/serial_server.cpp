@@ -9,6 +9,7 @@ static HardwareSerial S1(OSOS_UART_NUM);
 static File   serveFile;                       // open across an I..T..X session
 static String servePath = PROGRAM_FS_PATH;     // armed slot (reverts on 'X')
 static String programName = "INBOX.P";         // original name of the web-uploaded .p
+static void openServe();                       // fwd decl (called from serialServerBegin)
 
 #define PROGRAM_NAME_PATH "/program.nam"
 
@@ -40,6 +41,7 @@ void serialServerBegin() {
   if (f) { String n = f.readString(); n.trim(); if (n.length()) programName = n; f.close(); }
   Serial.printf("[srv] UART%d @ %d 8N1 (RX=%d TX=%d), program '%s'\n",
                 OSOS_UART_NUM, OSOS_BAUD, OSOS_RX_PIN, OSOS_TX_PIN, programName.c_str());
+  openServe();   // pre-open the program slot so the first 'I' answers without an open-time idle
 }
 
 // The ZX81 sends a verb's argument bytes right behind the verb; wait briefly.
@@ -52,14 +54,50 @@ static int readByteBlocking(uint32_t timeoutMs) {
   return S1.read();
 }
 
-// 'I' — (re)open the armed slot and report its length.
-static void handleInfo() {
+// Open the armed slot NOW and cache its true serve length. Done at arm time (boot/upload/download/
+// 'X'/etc.) so handleInfo answers 'I' instantly — the LittleFS open mid-request used to leave the
+// ZX81's RX line idle for ms, and the first length byte after that idle got mis-sampled (16250 read
+// as 16377/16373). The 'T' blocks never showed this because they read the already-open file fast.
+static String   openedPath = "";
+static uint32_t cachedServeLen = 0;
+static void openServe() {
   if (serveFile) serveFile.close();
   serveFile = LittleFS.open(servePath, "r");
+  openedPath = servePath;
   uint32_t n = serveFile ? serveFile.size() : 0;
-  S1.write((uint8_t)(n & 0xff));
-  S1.write((uint8_t)((n >> 8) & 0xff));
-  Serial.printf("[srv] I -> %u bytes (%s)\n", (unsigned)n, servePath.c_str());
+  // For a ZX81 .p (program/update slot, not the browse text), trailing padding past E_LINE pushes
+  // the load past RAMTOP (0x8000) and crashes the game. Use the TRUE length from the E_LINE system
+  // variable (file offset 11-12) so the ZX81 only pulls the real program.
+  if (serveFile && servePath != String(BROWSE_FS_PATH) && n >= 13) {
+    uint8_t h[13];
+    serveFile.seek(0);
+    if (serveFile.read(h, 13) == 13) {
+      uint32_t eline = (uint32_t)h[11] | ((uint32_t)h[12] << 8);
+      if (eline > 0x4009) {
+        uint32_t len = eline - 0x4009;
+        if (len >= 9 && len <= n) {
+          if (len != n) Serial.printf("[srv] arm trim %u -> %u (E_LINE)\n", (unsigned)n, (unsigned)len);
+          n = len;
+        }
+      }
+    }
+    serveFile.seek(0);
+  }
+  cachedServeLen = n;
+}
+void serialReopen() { openServe(); }   // public: re-arm after a web upload changes the slot
+
+// 'I' — report the armed slot's length immediately (the file is pre-opened at arm time).
+static void handleInfo() {
+  if (!serveFile || openedPath != servePath) openServe();   // fallback; normally already open
+  else serveFile.seek(0);
+  // One byte of the reply gets hardware-glitched on the ZX81 side (16250 read as ~16374) — always a
+  // single byte, never the last. So send the length 3x (lo,lo,lo,hi,hi,hi); the ZX81 takes the majority
+  // of each triple, so one glitched copy can't win wherever it lands.
+  uint8_t lo = cachedServeLen & 0xff, hi = (cachedServeLen >> 8) & 0xff;
+  S1.write(lo); S1.write(lo); S1.write(lo);
+  S1.write(hi); S1.write(hi); S1.write(hi);
+  Serial.printf("[srv] I -> %u bytes (%s)\n", (unsigned)cachedServeLen, servePath.c_str());
 }
 
 // 'T',num,len — send one block from offset num*256 plus a 2-byte checksum.
@@ -92,7 +130,7 @@ static void handleUpdateQuery() {
   uint16_t zxVer   = (uint16_t)lo | ((uint16_t)hi << 8);
   uint16_t menuVer = githubUpdateMenuVersion();   // 0 if no mirror present
   bool avail = (menuVer > zxVer) && LittleFS.exists(MENU_FS_PATH);
-  if (avail) servePath = MENU_FS_PATH;            // arm update slot for the next 'I'
+  if (avail) { servePath = MENU_FS_PATH; openServe(); }   // arm + pre-open update slot
   S1.write((uint8_t)(avail ? 1 : 0));
   Serial.printf("[srv] U zx=%u menu=%u -> %s\n",
                 zxVer, menuVer, avail ? "UPDATE" : "uptodate");
@@ -121,7 +159,7 @@ static void handleSetUrl() {
     url += (char)c;
   }
   browserSetUrl(url);                          // normalizes scheme, fetches, renders
-  servePath = BROWSE_FS_PATH;                  // arm browse slot for the next 'I'
+  servePath = BROWSE_FS_PATH; openServe();     // arm + pre-open browse slot for the next 'I'
   S1.write((uint8_t)1);
   Serial.printf("[srv] G '%s'\n", url.c_str());
 }
@@ -147,7 +185,7 @@ static void handleLibList() {
   String q;
   for (int i = 0; i < len; i++) { int c = readByteBlocking(2000); if (c < 0) return; q += (char)c; }
   int n = libraryRenderSearch(cat == 255 ? -1 : cat, q);
-  servePath = BROWSE_FS_PATH;
+  servePath = BROWSE_FS_PATH; openServe();
   S1.write((uint8_t)(n > 255 ? 255 : n));
 }
 
@@ -157,7 +195,7 @@ static void handleLibGet() {
   if (num < 0) return;
   String r = libraryDownloadByPage(num);
   bool ok = r.indexOf("ready") >= 0;
-  if (ok) servePath = PROGRAM_FS_PATH;       // arm the freshly downloaded game for I/T/X
+  if (ok) { servePath = PROGRAM_FS_PATH; openServe(); }   // arm + pre-open the downloaded game
   S1.write((uint8_t)(ok ? 1 : 0));
   Serial.printf("[srv] D %d -> %s\n", num, r.c_str());
 }
@@ -175,8 +213,8 @@ void serialServerLoop() {
       case 'L': handleLibList();     break;
       case 'D': handleLibGet();      break;
       case 'X':
-        if (serveFile) serveFile.close();
         servePath = PROGRAM_FS_PATH;             // revert to program slot
+        openServe();                             // pre-open for the next 'I' (no mid-request idle)
         Serial.println("[srv] X (done)");
         break;
       default: break;                            // ignore stray bytes / line glitches

@@ -189,6 +189,17 @@ String libraryDownloadByPage(int num) {
   return libraryDownload(libPage[num - 1]);
 }
 
+// A ZX81 .p is the RAM image 0x4009..E_LINE-1. TOSEC dumps frequently carry trailing padding
+// past E_LINE; loaded verbatim that pushes the program end past RAMTOP (0x8000) and the game
+// crashes on a 16K machine. Trim to the true length from the E_LINE system variable (offset 11-12).
+static size_t zxPTrueLen(const uint8_t* d, size_t n) {
+  if (n < 13) return n;
+  uint32_t eline = d[11] | ((uint32_t)d[12] << 8);
+  if (eline <= 0x4009) return n;            // missing/garbage E_LINE -> leave as-is
+  size_t len = eline - 0x4009;
+  return (len >= 9 && len <= n) ? len : n;  // only ever trim, never grow; sanity floor
+}
+
 String libraryDownload(int index) {
   String title, path;
   if (!catalogLine(index, title, path)) return "bad index";
@@ -248,9 +259,12 @@ String libraryDownload(int index) {
     got = out_n;
   } else { free(out); free(z); return "unsupported zip method"; }
 
+  size_t trueLen = zxPTrueLen(out, got);
+  if (trueLen != got) Serial.printf("[lib] trimmed padding: %u -> %u bytes (E_LINE)\n",
+                                    (unsigned)got, (unsigned)trueLen);
   File f = LittleFS.open(PROGRAM_FS_PATH, "w");
   if (!f) { free(out); free(z); return "fs error"; }
-  f.write(out, got); f.close();
+  f.write(out, trueLen); f.close();
   free(out); free(z);
 
   String name = eightThree(title);
